@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Voting Battle Royale</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>🎮 Voting Battle Royale</h1>
+
+<input id="name" placeholder="Name">
+<button onclick="joinGame()">Join</button>
+
+<h2 id="status">Waiting...</h2>
+<h2 id="timer">Time: 30</h2>
+
+<div id="players"></div>
+
+<h2>Actions</h2>
+<div id="actions"></div>
+
+<h2>Results</h2>
+<div id="results"></div>
+
+<h2>Chat</h2>
+<div id="chatBox"></div>
+<input id="chatInput">
+<button onclick="sendChat()">Send</button>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="client.js"></script>
+</body>
+</html>

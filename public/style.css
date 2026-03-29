@@ -1,0 +1,35 @@
+body {
+  font-family: Arial;
+  text-align: center;
+  background: #0b1d2a;
+  color: white;
+}
+
+#players {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.card {
+  background: #1e2f45;
+  margin: 10px;
+  padding: 15px;
+  border-radius: 12px;
+  width: 120px;
+}
+
+button {
+  padding: 10px;
+  margin: 5px;
+  border-radius: 8px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+}
+
+@media (max-width: 600px) {
+  .card {
+    width: 90px;
+  }
+}
