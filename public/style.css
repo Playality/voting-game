@@ -1,22 +1,22 @@
 body {
   background: #0b1d2a;
   color: white;
-  text-align: center;
   font-family: Arial;
+  text-align: center;
 }
 
 #players {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 10px;
 }
 
 .player {
-  background: #1e2f44;
-  padding: 15px;
+  background: #1e2f45;
+  padding: 20px;
+  margin: 10px;
   border-radius: 10px;
-  width: 130px;
+  width: 120px;
 }
 
 .player.dead {
@@ -24,22 +24,15 @@ body {
   opacity: 0.5;
 }
 
-.player.finalist {
-  border: 2px solid yellow;
-}
-
 button {
   margin-top: 10px;
-  padding: 6px;
-  border: none;
-  border-radius: 5px;
-  background: #3a7bd5;
-  color: white;
+  padding: 5px 10px;
   cursor: pointer;
 }
 
 button.selected {
-  background: #0f2f66;
+  background: #1e3a8a;
+  color: white;
 }
 
 /* MOBILE */

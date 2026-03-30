@@ -1,176 +1,158 @@
 const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+const http = require("http").createServer(app);
+const io = require("socket.io")(http);
 
 app.use(express.static("public"));
 
 let players = {};
-let alive = {};
-
-let nominationVotes = {};
-let votingVotes = {};
-let finalists = [];
-
 let phase = "waiting";
-let timer = 30;
+let nominations = {};
+let votes = {};
+let nominees = [];
 
 function alivePlayers() {
-  return Object.keys(alive).filter(id => alive[id]);
+  return Object.values(players).filter(p => p.alive);
 }
 
-function getTopNominees() {
-  let count = {};
-  Object.values(nominationVotes).forEach(v => {
-    count[v] = (count[v] || 0) + 1;
-  });
-
-  let max = Math.max(...Object.values(count), 0);
-  return Object.keys(count).filter(id => count[id] === max);
-}
-
-function eliminateFromVotes(votes) {
-  let count = {};
-
-  Object.values(votes).forEach(v => {
-    count[v] = (count[v] || 0) + 1;
-  });
-
-  let max = 0;
-  let out = null;
-
-  for (let id in count) {
-    if (count[id] > max) {
-      max = count[id];
-      out = id;
-    }
-  }
-
-  if (out) alive[out] = false;
-}
-
-function nextPhase() {
-  const aliveList = alivePlayers();
-
-  if (aliveList.length <= 1) {
-    phase = "gameover";
-    return;
-  }
-
-  // FINAL 3
-  if (aliveList.length <= 3) {
-    if (phase === "waiting") {
-      phase = "voting";
-      timer = 20;
-      votingVotes = {};
-      finalists = [...aliveList];
-      return;
-    }
-
-    if (phase === "voting") {
-      eliminateFromVotes(votingVotes);
-      phase = "results";
-      timer = 8;
-      return;
-    }
-
-    if (phase === "results") {
-      phase = "voting";
-      timer = 20;
-      votingVotes = {};
-      finalists = [...alivePlayers()];
-      return;
-    }
-  }
-
-  // NORMAL FLOW
-  if (phase === "waiting") {
-    phase = "nominating";
-    timer = 20;
-    nominationVotes = {};
-  }
-
-  else if (phase === "nominating") {
-    finalists = getTopNominees();
-    phase = "results";
-    timer = 8;
-  }
-
-  else if (phase === "results" && finalists.length > 1) {
-    phase = "voting";
-    timer = 20;
-    votingVotes = {};
-  }
-
-  else if (phase === "voting") {
-    eliminateFromVotes(votingVotes);
-    phase = "results";
-    timer = 8;
-  }
-
-  else {
-    phase = "waiting";
-    timer = 10;
-  }
-}
-
-function gameLoop() {
-  setInterval(() => {
-    if (Object.keys(players).length < 2) {
-      phase = "waiting";
-      timer = 30;
-      return;
-    }
-
-    timer--;
-
-    if (timer <= 0) {
-      nextPhase();
-    }
-
-    io.emit("gameState", {
-      players,
-      alive,
-      phase,
-      timer,
-      nominationVotes,
-      votingVotes,
-      finalists
-    });
-
-  }, 1000);
-}
-
+// PLAYER JOIN
 io.on("connection", (socket) => {
-
   socket.on("join", (name) => {
-    players[socket.id] = { name };
-    alive[socket.id] = true;
-  });
+    players[socket.id] = {
+      id: socket.id,
+      name,
+      alive: true,
+      nominated: [],
+      voted: false
+    };
 
-  socket.on("nominate", (id) => {
-    if (phase !== "nominating") return;
-    if (!alive[socket.id]) return;
+    io.emit("players", players);
 
-    nominationVotes[socket.id] = id;
-  });
-
-  socket.on("vote", (id) => {
-    if (phase !== "voting") return;
-    if (!alive[socket.id]) return;
-
-    votingVotes[socket.id] = id;
+    if (alivePlayers().length >= 2 && phase === "waiting") {
+      startRound();
+    }
   });
 
   socket.on("disconnect", () => {
     delete players[socket.id];
-    delete alive[socket.id];
+    io.emit("players", players);
+  });
+
+  // NOMINATE (2 votes max)
+  socket.on("nominate", (targetId) => {
+    if (phase !== "nominating") return;
+
+    const player = players[socket.id];
+    if (!player || !player.alive) return;
+
+    if (!player.nominated) player.nominated = [];
+    if (player.nominated.length >= 2) return;
+    if (player.nominated.includes(targetId)) return;
+
+    player.nominated.push(targetId);
+    nominations[targetId] = (nominations[targetId] || 0) + 1;
+
+    io.emit("updateNominations", nominations);
+  });
+
+  // VOTE
+  socket.on("vote", (targetId) => {
+    if (phase !== "voting") return;
+
+    const player = players[socket.id];
+    if (!player || !player.alive) return;
+
+    // nominees cannot vote
+    if (nominees.includes(socket.id)) return;
+    if (player.voted) return;
+
+    player.voted = true;
+    votes[targetId] = (votes[targetId] || 0) + 1;
+
+    io.emit("updateVotes", votes);
+  });
+
+  // CHAT
+  socket.on("chat", (msg) => {
+    if (!players[socket.id]) return;
+
+    io.emit("chat", {
+      name: players[socket.id].name,
+      msg
+    });
   });
 });
 
-gameLoop();
+// GAME FLOW
 
-server.listen(3000, () => console.log("Running"));
+function startRound() {
+  nominations = {};
+  votes = {};
+  nominees = [];
+
+  Object.values(players).forEach(p => {
+    p.nominated = [];
+    p.voted = false;
+  });
+
+  if (alivePlayers().length <= 3) {
+    startVotingPhase();
+    return;
+  }
+
+  phase = "nominating";
+  io.emit("phase", { phase, nominees });
+
+  setTimeout(() => {
+    pickNominees();
+    showResults(() => startVotingPhase());
+  }, 20000);
+}
+
+function pickNominees() {
+  const sorted = Object.entries(nominations)
+    .sort((a, b) => b[1] - a[1]);
+
+  nominees = sorted.slice(0, 2).map(([id]) => id);
+}
+
+function startVotingPhase() {
+  votes = {};
+
+  Object.values(players).forEach(p => {
+    p.voted = false;
+  });
+
+  phase = "voting";
+  io.emit("phase", { phase, nominees });
+
+  setTimeout(() => {
+    finishVoting();
+  }, 15000);
+}
+
+function finishVoting() {
+  phase = "results";
+  io.emit("phase", { phase, nominees, votes });
+
+  setTimeout(() => {
+    eliminatePlayer();
+    startRound();
+  }, 5000);
+}
+
+function eliminatePlayer() {
+  const sorted = Object.entries(votes)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (sorted.length === 0) return;
+
+  const [eliminatedId] = sorted[0];
+  if (players[eliminatedId]) {
+    players[eliminatedId].alive = false;
+  }
+
+  io.emit("players", players);
+}
+
+http.listen(3000, () => console.log("Server running"));
