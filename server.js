@@ -9,163 +9,109 @@ const io = new Server(server);
 app.use(express.static("public"));
 
 let players = {};
-let eliminated = [];
+let phase = "waiting"; // waiting, nominations, eviction
 let nominations = {};
-let votes = {};
-let phase = "waiting"; // waiting, nomination, eviction, final3, jury
+let evictionVotes = {};
+let nominees = [];
 let timer = 30;
 
-let profiles = {}; // stores points
+function startGame() {
+  phase = "nominations";
+  nominations = {};
+  nominees = [];
+  timer = 30;
+
+  io.emit("phase", { phase, timer });
+}
+
+function startEviction() {
+  phase = "eviction";
+  evictionVotes = {};
+  timer = 30;
+
+  io.emit("phase", { phase, timer, nominees });
+}
+
+function endEviction() {
+  let counts = {};
+
+  for (let vote of Object.values(evictionVotes)) {
+    counts[vote] = (counts[vote] || 0) + 1;
+  }
+
+  let eliminated = Object.keys(counts).reduce((a, b) =>
+    counts[a] > counts[b] ? a : b
+  );
+
+  delete players[eliminated];
+
+  io.emit("eliminated", eliminated);
+
+  if (Object.keys(players).length <= 2) {
+    phase = "end";
+    io.emit("gameOver", players);
+    return;
+  }
+
+  startGame();
+}
+
+setInterval(() => {
+  if (phase === "waiting") return;
+
+  timer--;
+  io.emit("timer", timer);
+
+  if (timer <= 0) {
+    if (phase === "nominations") {
+      let counts = {};
+
+      for (let vote of Object.values(nominations)) {
+        counts[vote] = (counts[vote] || 0) + 1;
+      }
+
+      nominees = Object.keys(counts)
+        .sort((a, b) => counts[b] - counts[a])
+        .slice(0, 2);
+
+      startEviction();
+    } else if (phase === "eviction") {
+      endEviction();
+    }
+  }
+}, 1000);
 
 io.on("connection", (socket) => {
+  socket.on("join", (name) => {
+    players[socket.id] = { name };
 
-  socket.on("joinGame", (name) => {
-    if (Object.keys(players).length >= 5) return;
+    io.emit("players", players);
 
-    players[socket.id] = { name, alive: true };
-    if (!profiles[name]) profiles[name] = { points: 0 };
-
-    io.emit("updatePlayers", players);
-
-    if (Object.keys(players).length === 5) startNomination();
+    if (Object.keys(players).length >= 5 && phase === "waiting") {
+      startGame();
+    }
   });
 
-  socket.on("nominate", (targetId) => {
-    if (phase !== "nomination") return;
-    if (!nominations[targetId]) nominations[targetId] = 0;
-    nominations[targetId]++;
+  socket.on("nominate", (id) => {
+    if (phase !== "nominations") return;
+    if (!players[socket.id]) return;
+
+    nominations[socket.id] = id;
   });
 
-  socket.on("vote", (targetId) => {
-    if (phase !== "eviction" && phase !== "final3" && phase !== "jury") return;
-    if (!votes[targetId]) votes[targetId] = 0;
-    votes[targetId]++;
+  socket.on("evict", (id) => {
+    if (phase !== "eviction") return;
+
+    // ❌ nominated players can't vote
+    if (nominees.includes(socket.id)) return;
+
+    evictionVotes[socket.id] = id;
   });
 
   socket.on("disconnect", () => {
     delete players[socket.id];
-    io.emit("updatePlayers", players);
+    io.emit("players", players);
   });
 });
 
-function startNomination() {
-  phase = "nomination";
-  nominations = {};
-  startTimer(() => endNomination());
-}
-
-function endNomination() {
-  let sorted = Object.entries(nominations)
-    .sort((a, b) => b[1] - a[1]);
-
-  let nominees = sorted.slice(0, 2).map(x => x[0]);
-
-  io.emit("showNomResults", nominations);
-  startEviction(nominees);
-}
-
-function startEviction(nominees) {
-  phase = "eviction";
-  votes = {};
-
-  io.emit("nominees", nominees);
-
-  startTimer(() => endEviction(nominees));
-}
-
-function endEviction(nominees) {
-  let loser = Object.entries(votes)
-    .sort((a, b) => b[1] - a[1])[0];
-
-  if (!loser) return;
-
-  players[loser[0]].alive = false;
-  eliminated.push(players[loser[0]]);
-
-  io.emit("eliminated", players[loser[0]].name);
-
-  checkGameState();
-}
-
-function checkGameState() {
-  let alive = Object.entries(players).filter(p => p[1].alive);
-
-  if (alive.length === 3) {
-    phase = "final3";
-    votes = {};
-    startTimer(() => endFinal3());
-    return;
-  }
-
-  if (alive.length === 2) {
-    phase = "jury";
-    votes = {};
-    startTimer(() => endJury());
-    return;
-  }
-
-  startNomination();
-}
-
-function endFinal3() {
-  let loser = Object.entries(votes)
-    .sort((a, b) => b[1] - a[1])[0];
-
-  players[loser[0]].alive = false;
-  eliminated.push(players[loser[0]]);
-
-  io.emit("eliminated", players[loser[0]].name);
-
-  checkGameState();
-}
-
-function endJury() {
-  let winner = Object.entries(votes)
-    .sort((a, b) => b[1] - a[1])[0];
-
-  let winnerName = players[winner[0]].name;
-
-  io.emit("winner", winnerName);
-
-  givePoints(winnerName);
-
-  resetGame();
-}
-
-function givePoints(winner) {
-  let alive = Object.values(players).filter(p => p.alive);
-  let second = alive.find(p => p.name !== winner);
-
-  profiles[winner].points += 10;
-  if (second) profiles[second.name].points += 5;
-
-  if (eliminated.length > 0) {
-    profiles[eliminated[eliminated.length - 1].name].points += 1;
-  }
-}
-
-function resetGame() {
-  players = {};
-  eliminated = [];
-  nominations = {};
-  votes = {};
-  phase = "waiting";
-
-  io.emit("reset");
-}
-
-function startTimer(callback) {
-  timer = 30;
-
-  let interval = setInterval(() => {
-    timer--;
-    io.emit("timer", timer);
-
-    if (timer <= 0) {
-      clearInterval(interval);
-      callback();
-    }
-  }, 1000);
-}
-
-server.listen(3000, () => console.log("Running on 3000"));
+server.listen(3000, () => console.log("Server running"));
