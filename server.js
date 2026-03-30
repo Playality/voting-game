@@ -90,6 +90,9 @@ io.on("connection", (socket) => {
     if (Object.keys(players).length >= 5 && phase === "waiting") {
       startGame();
     }
+socket.on("chat", (msg) => {
+  const name = players[socket.id]?.name || "Unknown";
+  io.emit("chat", `${name}: ${msg}`);
   });
 
   socket.on("nominate", (id) => {
