@@ -33,3 +33,43 @@ button {
     width: 90px;
   }
 }
+
+EFFECT)
+
+Add this:
+
+#players {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.player-box {
+  background: #1e2a3a;
+  padding: 15px;
+  border-radius: 12px;
+  min-width: 120px;
+  text-align: center;
+  color: white;
+}
+
+.player-box button {
+  margin-top: 10px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #4da3ff;
+  color: white;
+  cursor: pointer;
+}
+
+.player-box button.selected {
+  background: #1f5fbf; /* darker when clicked */
+}
+
+#chatBox {
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
