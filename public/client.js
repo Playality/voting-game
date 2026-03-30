@@ -1,3 +1,15 @@
+const socket = io();
+
+let currentPhase = "";
+let nominees = [];
+
+// JOIN BUTTON
+document.getElementById("joinBtn").onclick = () => {
+  const name = document.getElementById("nameInput").value.trim();
+  if (!name) return alert("Enter a name!");
+
+  socket.emit("join", name);
+};
 socket.on("phase", (data) => {
   currentPhase = data.phase;
   nominees = data.nominees || [];
