@@ -1,78 +1,36 @@
-const socket = io();
-let myId = null;
-let players = {};
+socket.on("phase", (data) => {
+  currentPhase = data.phase;
+  nominees = data.nominees || [];
 
-function joinGame() {
-  const name = document.getElementById("name").value;
-  socket.emit("joinGame", name);
-}
-
-socket.on("connect", () => {
-  myId = socket.id;
+  document.getElementById("actions").innerHTML = "";
 });
 
-socket.on("updatePlayers", (data) => {
-  players = data;
-  renderPlayers();
-});
+socket.on("players", (players) => {
+  const container = document.getElementById("players");
+  container.innerHTML = "";
 
-socket.on("timer", (t) => {
-  document.getElementById("timer").innerText = "Time: " + t;
-});
+  Object.entries(players).forEach(([id, p]) => {
+    const div = document.createElement("div");
+    div.className = "player";
+    div.innerHTML = `<strong>${p.name}</strong>`;
 
-socket.on("showNomResults", (data) => {
-  document.getElementById("results").innerText =
-    "Nom votes: " + JSON.stringify(data);
-});
+    container.appendChild(div);
 
-socket.on("nominees", (list) => {
-  renderVoteButtons(list);
-});
-
-socket.on("eliminated", (name) => {
-  document.getElementById("results").innerText = name + " eliminated";
-});
-
-socket.on("winner", (name) => {
-  document.getElementById("results").innerText = "Winner: " + name;
-});
-
-function renderPlayers() {
-  const div = document.getElementById("players");
-  div.innerHTML = "";
-
-  for (let id in players) {
-    const p = players[id];
-    div.innerHTML += `<div class="card">${p.name}<br>${p.alive ? "🟢" : "💀"}</div>`;
-  }
-
-  renderNomButtons();
-}
-
-function renderNomButtons() {
-  const div = document.getElementById("actions");
-  div.innerHTML = "";
-
-  for (let id in players) {
-    if (id !== myId && players[id].alive) {
-      div.innerHTML += `<button onclick="nominate('${id}')">Nominate ${players[id].name}</button>`;
+    // ACTION BUTTONS
+    if (currentPhase === "nominations") {
+      const btn = document.createElement("button");
+      btn.innerText = "Nominate";
+      btn.onclick = () => socket.emit("nominate", id);
+      document.getElementById("actions").appendChild(btn);
     }
-  }
-}
 
-function renderVoteButtons(list) {
-  const div = document.getElementById("actions");
-  div.innerHTML = "";
-
-  list.forEach(id => {
-    div.innerHTML += `<button onclick="vote('${id}')">Vote ${players[id].name}</button>`;
+    if (currentPhase === "eviction") {
+      if (!nominees.includes(socket.id)) {
+        const btn = document.createElement("button");
+        btn.innerText = "Evict";
+        btn.onclick = () => socket.emit("evict", id);
+        document.getElementById("actions").appendChild(btn);
+      }
+    }
   });
-}
-
-function nominate(id) {
-  socket.emit("nominate", id);
-}
-
-function vote(id) {
-  socket.emit("vote", id);
-}
+});
