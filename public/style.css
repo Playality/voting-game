@@ -1,8 +1,8 @@
 body {
-  background: #0b1d2a;
+  background: #0b1f2a;
   color: white;
-  font-family: Arial;
   text-align: center;
+  font-family: Arial;
 }
 
 #players {
@@ -12,11 +12,11 @@ body {
 }
 
 .player {
-  background: #1e2f45;
-  padding: 20px;
+  background: #1e2f44;
+  padding: 15px;
   margin: 10px;
   border-radius: 10px;
-  width: 120px;
+  width: 150px;
 }
 
 .player.dead {
@@ -25,19 +25,21 @@ body {
 }
 
 button {
+  background: #4a90e2;
+  border: none;
+  padding: 8px;
   margin-top: 10px;
-  padding: 5px 10px;
+  border-radius: 5px;
   cursor: pointer;
 }
 
-button.selected {
-  background: #1e3a8a;
-  color: white;
+button.clicked {
+  background: #1c5aa6;
 }
 
-/* MOBILE */
-@media (max-width: 600px) {
-  .player {
-    width: 90%;
-  }
+#chatBox {
+  height: 150px;
+  border: 1px solid white;
+  overflow-y: auto;
+  margin: 10px;
 }

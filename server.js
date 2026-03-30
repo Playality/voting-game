@@ -16,7 +16,6 @@ function alivePlayers() {
   return Object.keys(players).filter(id => players[id].alive);
 }
 
-// 🔥 ALWAYS SEND FULL STATE
 function sendGameState() {
   io.emit("gameState", {
     players,
@@ -28,7 +27,6 @@ function sendGameState() {
   });
 }
 
-// TIMER SYSTEM
 function startTimer(duration, next) {
   timer = duration;
   sendGameState();
@@ -44,7 +42,6 @@ function startTimer(duration, next) {
   }, 1000);
 }
 
-// JOIN
 io.on("connection", (socket) => {
 
   socket.on("join", (name) => {
@@ -67,7 +64,6 @@ io.on("connection", (socket) => {
     sendGameState();
   });
 
-  // NOMINATE (2 max)
   socket.on("nominate", (targetId) => {
     if (phase !== "nominating") return;
 
@@ -83,7 +79,6 @@ io.on("connection", (socket) => {
     sendGameState();
   });
 
-  // VOTE
   socket.on("vote", (targetId) => {
     if (phase !== "voting") return;
 
@@ -99,7 +94,6 @@ io.on("connection", (socket) => {
     sendGameState();
   });
 
-  // CHAT
   socket.on("chat", (msg) => {
     io.emit("chat", {
       name: players[socket.id]?.name || "Unknown",
@@ -107,8 +101,6 @@ io.on("connection", (socket) => {
     });
   });
 });
-
-// GAME FLOW
 
 function startRound() {
   nominations = {};
@@ -135,7 +127,6 @@ function finishNominations() {
   startTimer(6, startVoting);
 }
 
-// SMART TIE BREAK
 function pickNominees() {
   let sorted = Object.entries(nominations)
     .sort((a, b) => b[1] - a[1]);
