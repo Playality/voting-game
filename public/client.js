@@ -1,7 +1,6 @@
 const socket = io();
 
 let myId = null;
-let myVote = null;
 
 socket.on("connect", () => {
   myId = socket.id;
@@ -9,11 +8,15 @@ socket.on("connect", () => {
 
 document.getElementById("joinBtn").onclick = () => {
   const name = document.getElementById("nameInput").value;
-  if (!name) return;
   socket.emit("join", name);
 };
 
-socket.on("players", (players, alive) => {
+socket.on("gameState", (data) => {
+  const { players, alive, phase, timer, nominationVotes, votingVotes, finalists } = data;
+
+  document.getElementById("status").innerText = phase;
+  document.getElementById("timer").innerText = "Time: " + timer;
+
   const container = document.getElementById("players");
   container.innerHTML = "";
 
@@ -22,25 +25,33 @@ socket.on("players", (players, alive) => {
     div.className = "player";
 
     if (!alive[id]) div.classList.add("dead");
+    if (finalists.includes(id)) div.classList.add("finalist");
 
-    const name = document.createElement("div");
-    name.innerText = p.name;
+    div.innerHTML = `<strong>${p.name}</strong>`;
 
-    div.appendChild(name);
+    // BUTTON LOGIC 👇
+    if (phase === "nominating" && id !== myId && alive[id]) {
+      const btn = document.createElement("button");
+      btn.innerText = "Nominate";
 
-    // VOTE BUTTON
-    if (id !== myId && alive[id]) {
+      if (nominationVotes[myId] === id) {
+        btn.classList.add("selected");
+      }
+
+      btn.onclick = () => socket.emit("nominate", id);
+
+      div.appendChild(btn);
+    }
+
+    if (phase === "voting" && finalists.includes(id) && id !== myId) {
       const btn = document.createElement("button");
       btn.innerText = "Vote";
 
-      if (myVote === id) {
-        btn.classList.add("voted");
+      if (votingVotes[myId] === id) {
+        btn.classList.add("selected");
       }
 
-      btn.onclick = () => {
-        myVote = id;
-        socket.emit("vote", id);
-      };
+      btn.onclick = () => socket.emit("vote", id);
 
       div.appendChild(btn);
     }
@@ -48,26 +59,3 @@ socket.on("players", (players, alive) => {
     container.appendChild(div);
   });
 });
-
-socket.on("votes", (votes) => {
-  const results = document.getElementById("results");
-
-  let count = {};
-
-  Object.values(votes).forEach((v) => {
-    count[v] = (count[v] || 0) + 1;
-  });
-
-  results.innerHTML = "Votes:<br>" + JSON.stringify(count);
-});
-
-socket.on("chat", (data) => {
-  const chatBox = document.getElementById("chatBox");
-  chatBox.innerHTML += `<div><b>${data.name}:</b> ${data.msg}</div>`;
-});
-
-function sendChat() {
-  const input = document.getElementById("chatInput");
-  socket.emit("chat", input.value);
-  input.value = "";
-}

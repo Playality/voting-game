@@ -3,7 +3,6 @@ body {
   color: white;
   text-align: center;
   font-family: Arial;
-  padding: 10px;
 }
 
 #players {
@@ -17,21 +16,7 @@ body {
   background: #1e2f44;
   padding: 15px;
   border-radius: 10px;
-  width: 120px;
-}
-
-.player button {
-  margin-top: 10px;
-  padding: 5px;
-  background: #3a7bd5;
-  border: none;
-  color: white;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-.player button.voted {
-  background: #1f4a8a; /* darker when clicked */
+  width: 130px;
 }
 
 .player.dead {
@@ -39,15 +24,25 @@ body {
   opacity: 0.5;
 }
 
-#chatBox {
-  height: 150px;
-  overflow-y: auto;
-  border: 1px solid white;
-  margin: 10px;
-  padding: 5px;
+.player.finalist {
+  border: 2px solid yellow;
 }
 
-/* 📱 MOBILE */
+button {
+  margin-top: 10px;
+  padding: 6px;
+  border: none;
+  border-radius: 5px;
+  background: #3a7bd5;
+  color: white;
+  cursor: pointer;
+}
+
+button.selected {
+  background: #0f2f66;
+}
+
+/* MOBILE */
 @media (max-width: 600px) {
   .player {
     width: 90%;
