@@ -3,29 +3,37 @@ const socket = io();
 let currentPhase = "";
 let nominees = [];
 
-// JOIN BUTTON
+// JOIN GAME
 document.getElementById("joinBtn").onclick = () => {
   const name = document.getElementById("nameInput").value.trim();
   if (!name) return alert("Enter a name!");
 
   socket.emit("join", name);
 };
+
+// PHASE UPDATE
 socket.on("phase", (data) => {
   currentPhase = data.phase;
   nominees = data.nominees || [];
 
-  document.getElementById("actions").innerHTML = "";
+  document.getElementById("status").innerText = data.phase;
 });
 
+// TIMER
+socket.on("timer", (time) => {
+  document.getElementById("timer").innerText = "Time: " + time;
+});
+
+// PLAYERS LIST
 socket.on("players", (players) => {
   const container = document.getElementById("players");
   container.innerHTML = "";
+	document.getElementById("actions").innerHTML = "";
 
   Object.entries(players).forEach(([id, p]) => {
     const div = document.createElement("div");
     div.className = "player";
     div.innerHTML = `<strong>${p.name}</strong>`;
-
     container.appendChild(div);
 
     // ACTION BUTTONS
@@ -46,3 +54,13 @@ socket.on("players", (players) => {
     }
   });
 });
+
+// CHAT
+function sendChat() {
+  const input = document.getElementById("chatInput");
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  socket.emit("chat", msg);
+  input.value = "";
+}
