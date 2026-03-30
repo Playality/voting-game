@@ -73,22 +73,21 @@ function startRound() {
 }
 
 function endNomination() {
+  const alivePlayers = players.filter(p => p.alive);
+
   const sorted = Object.entries(nominations)
+    .filter(([id]) => alivePlayers.some(p => p.id === id))
     .sort((a, b) => b[1] - a[1]);
 
   nominees = sorted.slice(0, 2).map(x => x[0]);
 
-  // fallback if not enough nominees
-  if (nominees.length < 2) {
-    const alive = players.filter(p => p.alive);
+  // fallback if not enough
+  while (nominees.length < 2) {
+    const random =
+      alivePlayers[Math.floor(Math.random() * alivePlayers.length)].id;
 
-    while (nominees.length < 2 && alive.length > 0) {
-      const randomPlayer =
-        alive[Math.floor(Math.random() * alive.length)].id;
-
-      if (!nominees.includes(randomPlayer)) {
-        nominees.push(randomPlayer);
-      }
+    if (!nominees.includes(random)) {
+      nominees.push(random);
     }
   }
 
@@ -97,22 +96,29 @@ function endNomination() {
 }
 
 function endVoting() {
+  const aliveNominees = nominees.filter(id =>
+    players.find(p => p.id === id && p.alive)
+  );
+
   const sorted = Object.entries(votes)
+    .filter(([id]) => aliveNominees.includes(id))
     .sort((a, b) => b[1] - a[1]);
 
   let eliminated;
 
   if (sorted.length === 0) {
-    // no votes → random
+    // no votes → random nominee
     eliminated =
-      nominees[Math.floor(Math.random() * nominees.length)];
+      aliveNominees[Math.floor(Math.random() * aliveNominees.length)];
   } else if (
     sorted.length > 1 &&
     sorted[0][1] === sorted[1][1]
   ) {
     // tie breaker
-    const tied = [sorted[0][0], sorted[1][0]];
-    eliminated = tied[Math.floor(Math.random() * tied.length)];
+    eliminated =
+      [sorted[0][0], sorted[1][0]][
+        Math.floor(Math.random() * 2)
+      ];
   } else {
     eliminated = sorted[0][0];
   }
@@ -147,7 +153,7 @@ io.on("connection", socket => {
   // JOIN GAME
   socket.on("join", name => {
     if (!name) return;
-
+	if (players.find(p => p.id === socket.id)) return;
     players.push({
       id: socket.id,
       name,
@@ -163,24 +169,28 @@ io.on("connection", socket => {
   });
 
   // NOMINATE (can nominate multiple players)
-  socket.on("nominate", targetId => {
-    if (phase !== "nominating") return;
+	socket.on("nominate", targetId => {
+  if (phase !== "nominating") return;
 
-    nominations[targetId] = (nominations[targetId] || 0) + 1;
+  const player = players.find(p => p.id === socket.id);
+  if (!player || !player.alive) return; // ❗ BLOCK DEAD PLAYERS
 
-    broadcast();
-  });
+  nominations[targetId] = (nominations[targetId] || 0) + 1;
+
+  broadcast();
+});
 
   // VOTE (nominees cannot vote)
-  socket.on("vote", targetId => {
-    if (phase !== "voting") return;
+  socket.on("nominate", targetId => {
+  if (phase !== "nominating") return;
 
-    if (nominees.includes(socket.id)) return;
+  const player = players.find(p => p.id === socket.id);
+  if (!player || !player.alive) return; // ❗ BLOCK DEAD PLAYERS
 
-    votes[targetId] = (votes[targetId] || 0) + 1;
+  nominations[targetId] = (nominations[targetId] || 0) + 1;
 
-    broadcast();
-  });
+  broadcast();
+});
 
   // CHAT
   socket.on("chat", msg => {
