@@ -1,75 +1,55 @@
 body {
-  font-family: Arial;
-  text-align: center;
   background: #0b1d2a;
   color: white;
+  text-align: center;
+  font-family: Arial;
+  padding: 10px;
 }
 
 #players {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  gap: 10px;
 }
 
-.card {
-  background: #1e2f45;
-  margin: 10px;
+.player {
+  background: #1e2f44;
   padding: 15px;
-  border-radius: 12px;
+  border-radius: 10px;
   width: 120px;
 }
 
-button {
-  padding: 10px;
-  margin: 5px;
-  border-radius: 8px;
-  background: #3b82f6;
-  color: white;
-  border: none;
-}
-
-@media (max-width: 600px) {
-  .card {
-    width: 90px;
-  }
-}
-
-EFFECT)
-
-Add this:
-
-#players {
-  display: flex;
-  gap: 15px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.player-box {
-  background: #1e2a3a;
-  padding: 15px;
-  border-radius: 12px;
-  min-width: 120px;
-  text-align: center;
-  color: white;
-}
-
-.player-box button {
+.player button {
   margin-top: 10px;
-  padding: 6px 10px;
+  padding: 5px;
+  background: #3a7bd5;
   border: none;
-  border-radius: 6px;
-  background: #4da3ff;
   color: white;
+  border-radius: 5px;
   cursor: pointer;
 }
 
-.player-box button.selected {
-  background: #1f5fbf; /* darker when clicked */
+.player button.voted {
+  background: #1f4a8a; /* darker when clicked */
+}
+
+.player.dead {
+  background: gray;
+  opacity: 0.5;
 }
 
 #chatBox {
-  max-height: 150px;
+  height: 150px;
   overflow-y: auto;
-  margin-bottom: 10px;
+  border: 1px solid white;
+  margin: 10px;
+  padding: 5px;
+}
+
+/* 📱 MOBILE */
+@media (max-width: 600px) {
+  .player {
+    width: 90%;
+  }
 }
