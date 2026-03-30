@@ -78,3 +78,9 @@ socket.on("chat", (data) => {
   const box = document.getElementById("chatBox");
   box.innerHTML += `<p><b>${data.name}:</b> ${data.msg}</p>`;
 });
+socket.on("timer", (t) => {
+  document.getElementById("timer").innerText = "Time: " + t;
+});
+socket.on("results", (data) => {
+  document.getElementById("results").innerText = data.text;
+});
