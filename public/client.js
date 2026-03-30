@@ -1,86 +1,187 @@
-const socket = io();
+const express = require("express");
+const app = express();
+const http = require("http").createServer(app);
+const io = require("socket.io")(http);
 
-let currentPhase = "waiting";
+app.use(express.static("public"));
+
+let players = {};
+let phase = "waiting";
+let nominations = {};
+let votes = {};
 let nominees = [];
+let timer = 0;
 
-function join() {
-  const name = document.getElementById("nameInput").value;
-  socket.emit("join", name);
+function alivePlayers() {
+  return Object.keys(players).filter(id => players[id].alive);
 }
 
-socket.on("phase", (data) => {
-  currentPhase = data.phase;
-  nominees = data.nominees || [];
+// 🔥 ALWAYS SEND FULL STATE
+function sendGameState() {
+  io.emit("gameState", {
+    players,
+    phase,
+    nominations,
+    votes,
+    nominees,
+    timer
+  });
+}
 
-  document.getElementById("status").innerText = currentPhase;
-});
+// TIMER SYSTEM
+function startTimer(duration, next) {
+  timer = duration;
+  sendGameState();
 
-socket.on("players", (players) => {
-  const container = document.getElementById("players");
-  container.innerHTML = "";
+  const interval = setInterval(() => {
+    timer--;
+    sendGameState();
 
-  Object.entries(players).forEach(([id, p]) => {
-    const div = document.createElement("div");
-    div.className = "player";
-
-    if (!p.alive) div.classList.add("dead");
-
-    div.innerHTML = `<strong>${p.name}</strong>`;
-
-    // NOMINATE
-    if (currentPhase === "nominating" && id !== socket.id && p.alive) {
-      const btn = document.createElement("button");
-      btn.innerText = "Nominate";
-
-      btn.onclick = () => {
-        socket.emit("nominate", id);
-        btn.classList.add("selected");
-      };
-
-      div.appendChild(btn);
+    if (timer <= 0) {
+      clearInterval(interval);
+      next();
     }
+  }, 1000);
+}
 
-    // VOTE
-    if (
-      currentPhase === "voting" &&
-      nominees.includes(id) &&
-      !nominees.includes(socket.id) &&
-      p.alive
-    ) {
-      const btn = document.createElement("button");
-      btn.innerText = "Vote";
+// JOIN
+io.on("connection", (socket) => {
 
-      btn.onclick = () => {
-        socket.emit("vote", id);
-        btn.classList.add("selected");
-      };
+  socket.on("join", (name) => {
+    players[socket.id] = {
+      name,
+      alive: true,
+      nominated: [],
+      voted: false
+    };
 
-      div.appendChild(btn);
+    sendGameState();
+
+    if (alivePlayers().length >= 5 && phase === "waiting") {
+      startRound();
     }
+  });
 
-    container.appendChild(div);
+  socket.on("disconnect", () => {
+    delete players[socket.id];
+    sendGameState();
+  });
+
+  // NOMINATE (2 max)
+  socket.on("nominate", (targetId) => {
+    if (phase !== "nominating") return;
+
+    const p = players[socket.id];
+    if (!p || !p.alive) return;
+
+    if (p.nominated.length >= 2) return;
+    if (p.nominated.includes(targetId)) return;
+
+    p.nominated.push(targetId);
+    nominations[targetId] = (nominations[targetId] || 0) + 1;
+
+    sendGameState();
+  });
+
+  // VOTE
+  socket.on("vote", (targetId) => {
+    if (phase !== "voting") return;
+
+    const p = players[socket.id];
+    if (!p || !p.alive) return;
+
+    if (nominees.includes(socket.id)) return;
+    if (p.voted) return;
+
+    p.voted = true;
+    votes[targetId] = (votes[targetId] || 0) + 1;
+
+    sendGameState();
+  });
+
+  // CHAT
+  socket.on("chat", (msg) => {
+    io.emit("chat", {
+      name: players[socket.id]?.name || "Unknown",
+      msg
+    });
   });
 });
 
-// RESULTS
-socket.on("updateVotes", (votes) => {
-  document.getElementById("results").innerText =
-    "Votes: " + JSON.stringify(votes);
-});
+// GAME FLOW
 
-// CHAT
-function sendChat() {
-  const msg = document.getElementById("chatInput").value;
-  socket.emit("chat", msg);
+function startRound() {
+  nominations = {};
+  votes = {};
+  nominees = [];
+
+  Object.values(players).forEach(p => {
+    p.nominated = [];
+    p.voted = false;
+  });
+
+  if (alivePlayers().length <= 3) {
+    startVoting();
+    return;
+  }
+
+  phase = "nominating";
+  startTimer(20, finishNominations);
 }
 
-socket.on("chat", (data) => {
-  const box = document.getElementById("chatBox");
-  box.innerHTML += `<p><b>${data.name}:</b> ${data.msg}</p>`;
-});
-socket.on("timer", (t) => {
-  document.getElementById("timer").innerText = "Time: " + t;
-});
-socket.on("results", (data) => {
-  document.getElementById("results").innerText = data.text;
-});
+function finishNominations() {
+  pickNominees();
+  phase = "results";
+  startTimer(6, startVoting);
+}
+
+// SMART TIE BREAK
+function pickNominees() {
+  let sorted = Object.entries(nominations)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (sorted.length === 0) return;
+
+  let top = sorted[0][1];
+
+  nominees = sorted
+    .filter(([_, v]) => v === top)
+    .map(([id]) => id);
+
+  if (nominees.length === 1 && sorted[1]) {
+    nominees.push(sorted[1][0]);
+  }
+}
+
+function startVoting() {
+  votes = {};
+
+  Object.values(players).forEach(p => {
+    p.voted = false;
+  });
+
+  phase = "voting";
+  startTimer(15, finishVoting);
+}
+
+function finishVoting() {
+  eliminate();
+  phase = "results";
+  startTimer(5, startRound);
+}
+
+function eliminate() {
+  let sorted = Object.entries(votes)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (sorted.length === 0) return;
+
+  let max = sorted[0][1];
+  let tied = sorted.filter(([_, v]) => v === max);
+
+  let out = tied[Math.floor(Math.random() * tied.length)][0];
+
+  if (players[out]) players[out].alive = false;
+}
+
+http.listen(3000, () => console.log("Running"));

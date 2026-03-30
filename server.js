@@ -13,20 +13,33 @@ let nominees = [];
 let timer = 0;
 
 function alivePlayers() {
-  return Object.values(players).filter(p => p.alive);
+  return Object.keys(players).filter(id => players[id].alive);
 }
 
-// GAME LOOP TIMER
-function startTimer(duration, callback) {
+// 🔥 ALWAYS SEND FULL STATE
+function sendGameState() {
+  io.emit("gameState", {
+    players,
+    phase,
+    nominations,
+    votes,
+    nominees,
+    timer
+  });
+}
+
+// TIMER SYSTEM
+function startTimer(duration, next) {
   timer = duration;
+  sendGameState();
 
   const interval = setInterval(() => {
     timer--;
-    io.emit("timer", timer);
+    sendGameState();
 
     if (timer <= 0) {
       clearInterval(interval);
-      callback();
+      next();
     }
   }, 1000);
 }
@@ -36,14 +49,13 @@ io.on("connection", (socket) => {
 
   socket.on("join", (name) => {
     players[socket.id] = {
-      id: socket.id,
       name,
       alive: true,
       nominated: [],
       voted: false
     };
 
-    io.emit("players", players);
+    sendGameState();
 
     if (alivePlayers().length >= 5 && phase === "waiting") {
       startRound();
@@ -52,10 +64,10 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     delete players[socket.id];
-    io.emit("players", players);
+    sendGameState();
   });
 
-  // NOMINATE (2 votes)
+  // NOMINATE (2 max)
   socket.on("nominate", (targetId) => {
     if (phase !== "nominating") return;
 
@@ -68,7 +80,7 @@ io.on("connection", (socket) => {
     p.nominated.push(targetId);
     nominations[targetId] = (nominations[targetId] || 0) + 1;
 
-    io.emit("nominationUpdate", nominations);
+    sendGameState();
   });
 
   // VOTE
@@ -78,21 +90,19 @@ io.on("connection", (socket) => {
     const p = players[socket.id];
     if (!p || !p.alive) return;
 
-    if (nominees.includes(socket.id)) return; // nominees can't vote
+    if (nominees.includes(socket.id)) return;
     if (p.voted) return;
 
     p.voted = true;
     votes[targetId] = (votes[targetId] || 0) + 1;
 
-    io.emit("voteUpdate", votes);
+    sendGameState();
   });
 
   // CHAT
   socket.on("chat", (msg) => {
-    if (!players[socket.id]) return;
-
     io.emit("chat", {
-      name: players[socket.id].name,
+      name: players[socket.id]?.name || "Unknown",
       msg
     });
   });
@@ -111,56 +121,39 @@ function startRound() {
   });
 
   if (alivePlayers().length <= 3) {
-    startVotingPhase();
+    startVoting();
     return;
   }
 
   phase = "nominating";
-  io.emit("phase", { phase });
-
-  startTimer(20, () => {
-    pickNominees();
-    showNominationResults();
-  });
+  startTimer(20, finishNominations);
 }
 
-// SMART TIE BREAKER
+function finishNominations() {
+  pickNominees();
+  phase = "results";
+  startTimer(6, startVoting);
+}
+
+// SMART TIE BREAK
 function pickNominees() {
   let sorted = Object.entries(nominations)
     .sort((a, b) => b[1] - a[1]);
 
   if (sorted.length === 0) return;
 
-  let topVotes = sorted[0][1];
+  let top = sorted[0][1];
 
-  // include ALL tied at top
   nominees = sorted
-    .filter(([_, v]) => v === topVotes)
+    .filter(([_, v]) => v === top)
     .map(([id]) => id);
 
-  // if only 1 → add next highest
   if (nominees.length === 1 && sorted[1]) {
     nominees.push(sorted[1][0]);
   }
 }
 
-// SHOW NOMINATION RESULTS (VOTE TALLY)
-function showNominationResults() {
-  phase = "results";
-
-  const results = Object.entries(nominations)
-    .map(([id, count]) => `${players[id]?.name || "?"}: ${count}`)
-    .join(" | ");
-
-  io.emit("results", {
-    text: "Nomination Results: " + results,
-    nominees
-  });
-
-  startTimer(8, startVotingPhase);
-}
-
-function startVotingPhase() {
+function startVoting() {
   votes = {};
 
   Object.values(players).forEach(p => {
@@ -168,27 +161,13 @@ function startVotingPhase() {
   });
 
   phase = "voting";
-  io.emit("phase", { phase, nominees });
-
   startTimer(15, finishVoting);
 }
 
 function finishVoting() {
+  eliminate();
   phase = "results";
-
-  const results = Object.entries(votes)
-    .map(([id, count]) => `${players[id]?.name || "?"}: ${count}`)
-    .join(" | ");
-
-  io.emit("results", {
-    text: "Eviction Votes: " + results,
-    nominees
-  });
-
-  startTimer(6, () => {
-    eliminate();
-    startRound();
-  });
+  startTimer(5, startRound);
 }
 
 function eliminate() {
@@ -198,15 +177,11 @@ function eliminate() {
   if (sorted.length === 0) return;
 
   let max = sorted[0][1];
-
   let tied = sorted.filter(([_, v]) => v === max);
 
-  // random tie breaker
   let out = tied[Math.floor(Math.random() * tied.length)][0];
 
   if (players[out]) players[out].alive = false;
-
-  io.emit("players", players);
 }
 
-http.listen(3000, () => console.log("Server running"));
+http.listen(3000, () => console.log("Running"));
