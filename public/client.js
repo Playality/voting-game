@@ -1,73 +1,159 @@
 const socket = io();
 
+// ======================
+// STATE
+// ======================
+
 let myId = null;
-let voted = false;
-let nominated = false;
+let currentPhase = null;
+
+let hasVoted = false;
+let nominationsMade = [];
+
+// ======================
+// JOIN
+// ======================
 
 function join() {
-  const name = document.getElementById("name").value;
+  const name = document.getElementById("nameInput").value.trim();
+  if (!name) return;
+
   socket.emit("join", name);
 }
+
+// ======================
+// SOCKET
+// ======================
 
 socket.on("connect", () => {
   myId = socket.id;
 });
 
-socket.on("update", data => {
-  document.getElementById("phase").innerText = data.phase;
-  document.getElementById("timer").innerText = "Time: " + data.timer;
+socket.on("state", state => {
 
+  // ✅ RESET EACH PHASE
+  if (state.phase !== currentPhase) {
+    hasVoted = false;
+    nominationsMade = [];
+  }
+
+  currentPhase = state.phase;
+
+  document.getElementById("phase").innerText = state.phase.toUpperCase();
+  document.getElementById("timer").innerText = "Time: " + state.timer;
+
+  renderPlayers(state);
+  renderResults(state);
+});
+
+// ======================
+// RENDER PLAYERS
+// ======================
+
+function renderPlayers(state) {
   const container = document.getElementById("players");
   container.innerHTML = "";
 
-  voted = false;
-  nominated = false;
+  const players = Object.values(state.players);
 
-  data.players.forEach(p => {
+  players.forEach(player => {
     const div = document.createElement("div");
     div.className = "player";
 
-    if (!p.alive) div.classList.add("dead");
+    // DEAD = greyed out
+    if (!player.alive) {
+      div.style.opacity = "0.4";
+    }
 
-    div.innerHTML = `<h3>${p.name}</h3>`;
+    // NOMINATED highlight
+    if (state.nominatedPlayers.includes(player.id)) {
+      div.style.border = "2px solid red";
+    }
 
-    if (data.phase === "nominating" && p.id !== myId && p.alive) {
+    const name = document.createElement("h3");
+    name.innerText = player.name;
+
+    const voteCount = state.votes[player.id] || 0;
+    const nomCount = state.nominations[player.id] || 0;
+
+    const stats = document.createElement("p");
+    stats.innerText = `Votes: ${voteCount} | Noms: ${nomCount}`;
+
+    div.appendChild(name);
+    div.appendChild(stats);
+
+    // ======================
+    // NOMINATE BUTTON
+    // ======================
+
+    if (
+      state.phase === "nominating" &&
+      player.alive &&
+      player.id !== myId &&
+      nominationsMade.length < 2
+    ) {
       const btn = document.createElement("button");
       btn.innerText = "Nominate";
+
       btn.onclick = () => {
-        socket.emit("nominate", p.id);
-        btn.classList.add("clicked");
+        if (nominationsMade.includes(player.id)) return;
+
+        nominationsMade.push(player.id);
+        socket.emit("nominate", player.id);
       };
+
       div.appendChild(btn);
     }
 
+    // ======================
+    // VOTE BUTTON
+    // ======================
+
     if (
-      data.phase === "voting" &&
-      data.nominees.includes(p.id) &&
-      !data.nominees.includes(myId)
+      state.phase === "voting" &&
+      player.alive &&
+      !hasVoted &&
+      player.id !== myId &&
+      !state.nominatedPlayers.includes(myId) // ❗ cannot vote if nominated
     ) {
       const btn = document.createElement("button");
       btn.innerText = "Vote";
+
       btn.onclick = () => {
-        socket.emit("vote", p.id);
-        btn.classList.add("clicked");
+        hasVoted = true;
+        socket.emit("vote", player.id);
       };
+
       div.appendChild(btn);
     }
 
     container.appendChild(div);
   });
+}
 
-  document.getElementById("results").innerText =
-    "Votes: " + JSON.stringify(data.votes);
-});
+// ======================
+// RESULTS
+// ======================
 
-socket.on("chat", msg => {
-  const box = document.getElementById("chatBox");
-  box.innerHTML += `<div>${msg}</div>`;
-});
+function renderResults(state) {
+  const results = document.getElementById("results");
 
-function sendChat() {
-  const msg = document.getElementById("chatInput").value;
+  if (state.phase === "results") {
+    results.innerText = "Round finished!";
+  } else {
+    results.innerText = "";
+  }
+}
+
+// ======================
+// CHAT (optional)
+// ======================
+
+function sendMessage() {
+  const input = document.getElementById("chatInput");
+  const msg = input.value.trim();
+  if (!msg) return;
+
   socket.emit("chat", msg);
+  input.value = "";
 }

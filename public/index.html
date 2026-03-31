@@ -8,21 +8,17 @@
 
 <h1>🎮 Voting Battle Royale</h1>
 
-<input id="name" placeholder="Name">
+<input id="nameInput" placeholder="Enter name" />
 <button onclick="join()">Join</button>
 
-<h2 id="phase">Waiting...</h2>
+<h2 id="phase">Waiting</h2>
 <h3 id="timer">Time: 0</h3>
 
 <div id="players"></div>
-
-<h2>Results</h2>
 <div id="results"></div>
 
-<h2>Chat</h2>
-<div id="chatBox"></div>
-<input id="chatInput">
-<button onclick="sendChat()">Send</button>
+<input id="chatInput" />
+<button onclick="sendMessage()">Send</button>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="client.js"></script>
