@@ -1,160 +1,158 @@
 const socket = io();
-console.log("CLIENT LOADED");
 
-// ======================
-// STATE
-// ======================
-
+// ================= STATE =================
 let myId = null;
-let currentPhase = null;
+let players = [];
+let phase = "waiting";
+let alive = true;
 
-let hasVoted = false;
-let nominationsMade = [];
+let selectedNominations = [];
+let selectedVote = null;
 
-// ======================
-// JOIN
-// ======================
-
-function join() {
+// ================= JOIN =================
+function joinGame() {
   const name = document.getElementById("nameInput").value.trim();
-  if (!name) return;
+  if (!name) return alert("Enter name");
 
   socket.emit("join", name);
 }
 
-// ======================
-// SOCKET
-// ======================
-
-socket.on("connect", () => {
-  myId = socket.id;
+socket.on("joined", (id) => {
+  myId = id;
 });
 
-socket.on("state", state => {
+// ================= GAME STATE =================
+socket.on("state", (data) => {
+  players = data.players;
+  phase = data.phase;
 
-  // ✅ RESET EACH PHASE
-  if (state.phase !== currentPhase) {
-    hasVoted = false;
-    nominationsMade = [];
-  }
+  const me = players.find(p => p.id === myId);
+  alive = me ? me.alive : false;
 
-  currentPhase = state.phase;
-
-  document.getElementById("phase").innerText = state.phase.toUpperCase();
-  document.getElementById("timer").innerText = "Time: " + state.timer;
-
-  renderPlayers(state);
-  renderResults(state);
+  render();
 });
 
-// ======================
-// RENDER PLAYERS
-// ======================
-
-function renderPlayers(state) {
+// ================= RENDER =================
+function render() {
   const container = document.getElementById("players");
-  container.innerHTML = "";
+  const phaseText = document.getElementById("phase");
 
-  const players = Object.values(state.players);
+  container.innerHTML = "";
+  phaseText.innerText = phase.toUpperCase();
 
   players.forEach(player => {
-    const div = document.createElement("div");
-    div.className = "player";
+    const card = document.createElement("div");
+    card.className = "player-card";
 
     // DEAD = greyed out
     if (!player.alive) {
-      div.style.opacity = "0.4";
-    }
-
-    // NOMINATED highlight
-    if (state.nominatedPlayers.includes(player.id)) {
-      div.style.border = "2px solid red";
+      card.classList.add("dead");
     }
 
     const name = document.createElement("h3");
     name.innerText = player.name;
+    card.appendChild(name);
 
-    const voteCount = state.votes[player.id] || 0;
-    const nomCount = state.nominations[player.id] || 0;
-
-    const stats = document.createElement("p");
-    stats.innerText = `Votes: ${voteCount} | Noms: ${nomCount}`;
-
-    div.appendChild(name);
-    div.appendChild(stats);
-
-    // ======================
-    // NOMINATE BUTTON
-    // ======================
-
-    if (
-      state.phase === "nominating" &&
-      player.alive &&
-      player.id !== myId &&
-      nominationsMade.length < 2
-    ) {
+    // ================= NOMINATION =================
+    if (phase === "nominating" && alive && player.id !== myId && player.alive) {
       const btn = document.createElement("button");
       btn.innerText = "Nominate";
 
-      btn.onclick = () => {
-        if (nominationsMade.includes(player.id)) return;
-
-        nominationsMade.push(player.id);
-        socket.emit("nominate", player.id);
-      };
-
-      div.appendChild(btn);
-    }
-
-    // ======================
-    // VOTE BUTTON
-    // ======================
-
-    if (
-      state.phase === "voting" &&
-      player.alive &&
-      !hasVoted &&
-      player.id !== myId &&
-      !state.nominatedPlayers.includes(myId) // ❗ cannot vote if nominated
-    ) {
-      const btn = document.createElement("button");
-      btn.innerText = "Vote";
+      if (selectedNominations.includes(player.id)) {
+        btn.classList.add("selected");
+      }
 
       btn.onclick = () => {
-        hasVoted = true;
-        socket.emit("vote", player.id);
+        if (selectedNominations.includes(player.id)) {
+          selectedNominations = selectedNominations.filter(id => id !== player.id);
+        } else {
+          if (selectedNominations.length >= 2) return;
+          selectedNominations.push(player.id);
+        }
+        render();
       };
 
-      div.appendChild(btn);
+      card.appendChild(btn);
     }
 
-    container.appendChild(div);
+    // ================= VOTING =================
+    if (phase === "voting" && alive && player.alive) {
+      // can't vote for yourself
+      if (player.id !== myId) {
+        const btn = document.createElement("button");
+        btn.innerText = "Vote";
+
+        if (selectedVote === player.id) {
+          btn.classList.add("selected");
+        }
+
+        btn.onclick = () => {
+          selectedVote = player.id;
+          render();
+        };
+
+        card.appendChild(btn);
+      }
+    }
+
+    container.appendChild(card);
   });
+
+  renderActionButton();
 }
 
-// ======================
-// RESULTS
-// ======================
+// ================= ACTION BUTTON =================
+function renderActionButton() {
+  let existing = document.getElementById("actionBtn");
+  if (existing) existing.remove();
 
-function renderResults(state) {
-  const results = document.getElementById("results");
+  const btn = document.createElement("button");
+  btn.id = "actionBtn";
 
-  if (state.phase === "results") {
-    results.innerText = "Round finished!";
-  } else {
-    results.innerText = "";
+  // NOMINATION SUBMIT
+  if (phase === "nominating" && alive) {
+    btn.innerText = "Submit Nominations";
+
+    btn.onclick = () => {
+      if (selectedNominations.length !== 2) {
+        alert("Pick 2 players");
+        return;
+      }
+
+      socket.emit("nominate", selectedNominations);
+      selectedNominations = [];
+    };
+  }
+
+  // VOTE SUBMIT
+  if (phase === "voting" && alive) {
+    btn.innerText = "Submit Vote";
+
+    btn.onclick = () => {
+      if (!selectedVote) {
+        alert("Pick someone to vote");
+        return;
+      }
+
+      socket.emit("vote", selectedVote);
+      selectedVote = null;
+    };
+  }
+
+  // ONLY show if alive
+  if (alive && (phase === "nominating" || phase === "voting")) {
+    document.body.appendChild(btn);
   }
 }
 
-// ======================
-// CHAT (optional)
-// ======================
+// ================= RESULTS =================
+socket.on("results", (data) => {
+  const results = document.getElementById("results");
+  results.innerHTML = "";
 
-function sendMessage() {
-  const input = document.getElementById("chatInput");
-  const msg = input.value.trim();
-  if (!msg) return;
-
-  socket.emit("chat", msg);
-  input.value = "";
-}
+  data.forEach(r => {
+    const div = document.createElement("div");
+    div.innerText = `${r.name}: ${r.votes}`;
+    results.appendChild(div);
+  });
+});

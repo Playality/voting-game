@@ -32,14 +32,39 @@ button {
   border-radius: 5px;
   cursor: pointer;
 }
-
-button.clicked {
-  background: #1c5aa6;
+.player-card {
+  background: #1e2a38;
+  padding: 15px;
+  border-radius: 12px;
+  text-align: center;
+  width: 120px;
+  transition: 0.2s;
 }
 
-#chatBox {
-  height: 150px;
-  border: 1px solid white;
-  overflow-y: auto;
-  margin: 10px;
+.player-card.dead {
+  background: #555;
+  opacity: 0.5;
+}
+
+button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: #4da3ff;
+  color: white;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+/* CLICKED BUTTON */
+button.selected {
+  background: #2ecc71;
+  transform: scale(0.95);
+}
+
+/* SUBMIT BUTTON */
+#actionBtn {
+  margin-top: 20px;
+  padding: 12px 20px;
+  font-size: 16px;
 }

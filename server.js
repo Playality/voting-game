@@ -10,206 +10,233 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
-let players = {};
+// ================= GAME STATE =================
+let players = [];
 let phase = "waiting";
-let timer = 0;
 
 let nominations = {};
 let votes = {};
-let nominatedPlayers = [];
+
+let nominees = [];
+let juryVotes = {};
 
 const MIN_PLAYERS = 5;
 
-// =======================
-// GAME LOOP
-// =======================
-
-function startGame() {
-  if (Object.keys(players).length < MIN_PLAYERS) return;
-
-  Object.values(players).forEach(p => {
-    p.alive = true;
-  });
-
-  nextPhase("nominating");
+// ================= HELPERS =================
+function alivePlayers() {
+  return players.filter(p => p.alive);
 }
 
-function nextPhase(newPhase) {
-  phase = newPhase;
+function broadcastState() {
+  io.emit("state", { players, phase });
+}
 
-  // RESET STATE EVERY ROUND
+function resetRound() {
   nominations = {};
   votes = {};
-  nominatedPlayers = [];
-
-  if (phase === "nominating") timer = 20;
-  if (phase === "voting") timer = 20;
-  if (phase === "results") timer = 5;
-
-  update();
+  nominees = [];
 }
 
-// =======================
-// TICK
-// =======================
+// ================= GAME FLOW =================
+function startGameIfReady() {
+  if (players.length >= MIN_PLAYERS && phase === "waiting") {
+    startNominations();
+  }
+}
 
-setInterval(() => {
-  if (phase === "waiting") {
-    if (Object.keys(players).length >= MIN_PLAYERS) {
-      startGame();
-    }
+// ===== NOMINATING =====
+function startNominations() {
+  resetRound();
+
+  const alive = alivePlayers();
+
+  // FINAL 3 → skip nominations
+  if (alive.length <= 3) {
+    startVoting(alive.map(p => p.id));
     return;
   }
 
-  timer--;
+  phase = "nominating";
+  broadcastState();
 
-  if (timer <= 0) {
-    if (phase === "nominating") {
-      pickNominees();
-      nextPhase("voting");
-
-    } else if (phase === "voting") {
-      eliminatePlayer();
-      nextPhase("results");
-
-    } else if (phase === "results") {
-      checkEndGame();
-    }
-  }
-
-  update();
-}, 1000);
-
-// =======================
-// NOMINATION LOGIC
-// =======================
-
-function pickNominees() {
-  const sorted = Object.entries(nominations)
-    .sort((a, b) => b[1] - a[1]);
-
-  nominatedPlayers = sorted.slice(0, 2).map(x => x[0]);
-
-  // TIE BREAKER (random)
-  if (nominatedPlayers.length < 2) {
-    const alive = Object.values(players).filter(p => p.alive);
-    const random = alive[Math.floor(Math.random() * alive.length)];
-    if (random) nominatedPlayers.push(random.id);
-  }
+  setTimeout(endNominations, 15000);
 }
 
-// =======================
-// ELIMINATION LOGIC
-// =======================
+function endNominations() {
+  const tally = {};
 
-function eliminatePlayer() {
-  const sorted = Object.entries(votes)
+  // count nominations
+  for (let voter in nominations) {
+    nominations[voter].forEach(target => {
+      tally[target] = (tally[target] || 0) + 1;
+    });
+  }
+
+  // sort top 2
+  const sorted = Object.entries(tally)
     .sort((a, b) => b[1] - a[1]);
 
-  if (!sorted.length) return;
-
-  const highest = sorted[0][1];
-  const tied = sorted.filter(x => x[1] === highest);
-
-  const eliminated = tied[Math.floor(Math.random() * tied.length)][0];
-
-  if (players[eliminated]) {
-    players[eliminated].alive = false;
-  }
-}
-
-// =======================
-// END GAME
-// =======================
-
-function checkEndGame() {
-  const alive = Object.values(players).filter(p => p.alive);
-
-  if (alive.length <= 3) {
-    // FINAL PHASE: no nominations
-    nextPhase("voting");
+  if (sorted.length === 0) {
+    // no votes → random 2
+    const alive = alivePlayers().map(p => p.id);
+    nominees = shuffle(alive).slice(0, 2);
   } else {
-    nextPhase("nominating");
+    nominees = sorted.slice(0, 2).map(x => x[0]);
   }
+
+  startVoting(nominees);
 }
 
-// =======================
-// SOCKETS
-// =======================
+// ===== VOTING =====
+function startVoting(targets) {
+  votes = {};
+  nominees = targets;
 
-io.on("connection", socket => {
-  console.log("User connected:", socket.id);
+  phase = "voting";
+  broadcastState();
 
-  socket.on("join", name => {
-    players[socket.id] = {
+  setTimeout(endVoting, 15000);
+}
+
+function endVoting() {
+  const tally = {};
+
+  for (let voter in votes) {
+    const target = votes[voter];
+    tally[target] = (tally[target] || 0) + 1;
+  }
+
+  let sorted = Object.entries(tally)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (sorted.length === 0) {
+    sorted = [[nominees[Math.floor(Math.random() * nominees.length)], 1]];
+  }
+
+  // handle tie
+  const topScore = sorted[0][1];
+  const tied = sorted.filter(x => x[1] === topScore);
+
+  const eliminatedId = tied[Math.floor(Math.random() * tied.length)][0];
+
+  const player = players.find(p => p.id === eliminatedId);
+  if (player) player.alive = false;
+
+  // send results (ONLY after vote ends)
+  io.emit("results", sorted.map(x => {
+    const p = players.find(pl => pl.id === x[0]);
+    return { name: p ? p.name : "?", votes: x[1] };
+  }));
+
+  setTimeout(nextRound, 4000);
+}
+
+// ===== FINAL 2 (JURY) =====
+function startJuryVoting() {
+  votes = {};
+  phase = "voting";
+  broadcastState();
+
+  setTimeout(endJuryVoting, 15000);
+}
+
+function endJuryVoting() {
+  const tally = {};
+
+  for (let voter in votes) {
+    const target = votes[voter];
+    tally[target] = (tally[target] || 0) + 1;
+  }
+
+  const sorted = Object.entries(tally)
+    .sort((a, b) => b[1] - a[1]);
+
+  const winnerId = sorted[0][0];
+  const winner = players.find(p => p.id === winnerId);
+
+  io.emit("results", [{
+    name: winner.name,
+    votes: "WINNER 🏆"
+  }]);
+
+  phase = "ended";
+  broadcastState();
+}
+
+// ===== NEXT ROUND =====
+function nextRound() {
+  const alive = alivePlayers();
+
+  if (alive.length === 2) {
+    startJuryVoting();
+    return;
+  }
+
+  if (alive.length <= 1) {
+    phase = "ended";
+    broadcastState();
+    return;
+  }
+
+  startNominations();
+}
+
+// ===== UTIL =====
+function shuffle(array) {
+  return array.sort(() => Math.random() - 0.5);
+}
+
+// ================= SOCKET =================
+io.on("connection", (socket) => {
+
+  socket.on("join", (name) => {
+    players.push({
       id: socket.id,
       name,
       alive: true
-    };
+    });
 
-    update();
+    socket.emit("joined", socket.id);
+    broadcastState();
+
+    startGameIfReady();
   });
 
-  socket.on("nominate", targetId => {
-    const player = players[socket.id];
+  socket.on("nominate", (targets) => {
+    const player = players.find(p => p.id === socket.id);
 
     if (!player || !player.alive) return;
     if (phase !== "nominating") return;
 
-    // max 2 nominations per player
-    if (!player.nominations) player.nominations = [];
-
-    if (player.nominations.includes(targetId)) return;
-    if (player.nominations.length >= 2) return;
-
-    player.nominations.push(targetId);
-
-    nominations[targetId] = (nominations[targetId] || 0) + 1;
-
-    update();
+    nominations[socket.id] = targets.slice(0, 2);
   });
 
-  socket.on("vote", targetId => {
-    const player = players[socket.id];
+  socket.on("vote", (target) => {
+    const player = players.find(p => p.id === socket.id);
 
-    if (!player || !player.alive) return;
-    if (phase !== "voting") return;
+    if (!player) return;
 
-    // ❗ BLOCK NOMINATED PLAYERS FROM VOTING
-    if (nominatedPlayers.includes(socket.id)) return;
+    // ALIVE players vote in normal rounds
+    if (phase === "voting" && alivePlayers().length > 2) {
+      if (!player.alive) return;
+    }
 
-    if (player.voted) return;
+    // JURY votes when final 2
+    if (alivePlayers().length === 2) {
+      if (player.alive) return; // ONLY dead players vote
+    }
 
-    player.voted = true;
-
-    votes[targetId] = (votes[targetId] || 0) + 1;
-
-    update();
+    votes[socket.id] = target;
   });
 
   socket.on("disconnect", () => {
-    delete players[socket.id];
-    update();
+    players = players.filter(p => p.id !== socket.id);
+    broadcastState();
   });
+
 });
 
-// =======================
-// UPDATE CLIENT
-// =======================
-
-function update() {
-  io.emit("state", {
-    players,
-    phase,
-    timer,
-    nominations,
-    votes,
-    nominatedPlayers
-  });
-}
-
-// =======================
-
-server.listen(process.env.PORT || 3000, () => {
-  console.log("Server running");
+// ================= START =================
+server.listen(3000, () => {
+  console.log("Server running on port 3000");
 });
