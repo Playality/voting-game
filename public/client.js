@@ -1,4 +1,5 @@
 const socket = io();
+console.log("CLIENT LOADED");
 
 // ======================
 // STATE
