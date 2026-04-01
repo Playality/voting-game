@@ -1,73 +1,61 @@
 const socket = io();
 
-// ================= STATE =================
 let myId = null;
 let players = [];
 let phase = "waiting";
-let alive = true;
+let nominees = [];
 
-let selectedNominations = [];
-let selectedVote = null;
+let selected = [];
+let votePick = null;
 
-// ================= JOIN =================
 function joinGame() {
   const name = document.getElementById("nameInput").value.trim();
-  if (!name) return alert("Enter name");
-
+  if (!name) return;
   socket.emit("join", name);
 }
 
-socket.on("joined", (id) => {
+socket.on("joined", id => {
   myId = id;
 });
 
-// ================= GAME STATE =================
-socket.on("state", (data) => {
+socket.on("state", data => {
   players = data.players;
   phase = data.phase;
-
-  const me = players.find(p => p.id === myId);
-  alive = me ? me.alive : false;
-
+  nominees = data.nominees || [];
   render();
 });
 
-// ================= RENDER =================
+socket.on("results", data => {
+  document.getElementById("results").innerHTML =
+    data.map(r => `${r.name}: ${r.votes}`).join("<br>");
+});
+
 function render() {
-  const container = document.getElementById("players");
-  const phaseText = document.getElementById("phase");
+  const div = document.getElementById("players");
+  div.innerHTML = "";
 
-  container.innerHTML = "";
-  phaseText.innerText = phase.toUpperCase();
+  const me = players.find(p => p.id === myId);
+  const alive = me?.alive;
 
-  players.forEach(player => {
+  players.forEach(p => {
     const card = document.createElement("div");
-    card.className = "player-card";
+    card.className = "card";
+    if (!p.alive) card.classList.add("dead");
 
-    // DEAD = greyed out
-    if (!player.alive) {
-      card.classList.add("dead");
-    }
+    card.innerHTML = `<h3>${p.name}</h3>`;
 
-    const name = document.createElement("h3");
-    name.innerText = player.name;
-    card.appendChild(name);
-
-    // ================= NOMINATION =================
-    if (phase === "nominating" && alive && player.id !== myId && player.alive) {
+    // NOMINATE
+    if (phase === "nominating" && alive && p.id !== myId && p.alive) {
       const btn = document.createElement("button");
       btn.innerText = "Nominate";
 
-      if (selectedNominations.includes(player.id)) {
-        btn.classList.add("selected");
-      }
+      if (selected.includes(p.id)) btn.classList.add("selected");
 
       btn.onclick = () => {
-        if (selectedNominations.includes(player.id)) {
-          selectedNominations = selectedNominations.filter(id => id !== player.id);
-        } else {
-          if (selectedNominations.length >= 2) return;
-          selectedNominations.push(player.id);
+        if (selected.includes(p.id)) {
+          selected = selected.filter(x => x !== p.id);
+        } else if (selected.length < 2) {
+          selected.push(p.id);
         }
         render();
       };
@@ -75,84 +63,54 @@ function render() {
       card.appendChild(btn);
     }
 
-    // ================= VOTING =================
-    if (phase === "voting" && alive && player.alive) {
-      // can't vote for yourself
-      if (player.id !== myId) {
+    // VOTE
+    if (phase === "voting" && alive && p.alive && p.id !== myId) {
+      if (!nominees.includes(myId)) {
         const btn = document.createElement("button");
         btn.innerText = "Vote";
 
-        if (selectedVote === player.id) {
-          btn.classList.add("selected");
-        }
+        if (votePick === p.id) btn.classList.add("selected");
 
         btn.onclick = () => {
-          selectedVote = player.id;
+          votePick = p.id;
           render();
         };
 
         card.appendChild(btn);
       }
     }
-
-    container.appendChild(card);
+    div.appendChild(card);
   });
 
-  renderActionButton();
+  renderSubmit(alive);
 }
 
-// ================= ACTION BUTTON =================
-function renderActionButton() {
-  let existing = document.getElementById("actionBtn");
-  if (existing) existing.remove();
+function renderSubmit(alive) {
+  let btn = document.getElementById("submit");
+  if (btn) btn.remove();
 
-  const btn = document.createElement("button");
-  btn.id = "actionBtn";
+  btn = document.createElement("button");
+  btn.id = "submit";
 
-  // NOMINATION SUBMIT
   if (phase === "nominating" && alive) {
     btn.innerText = "Submit Nominations";
-
     btn.onclick = () => {
-      if (selectedNominations.length !== 2) {
-        alert("Pick 2 players");
-        return;
-      }
-
-      socket.emit("nominate", selectedNominations);
-      selectedNominations = [];
+      if (selected.length !== 2) return alert("Pick 2 players");
+      socket.emit("nominate", selected);
+      selected = [];
     };
   }
 
-  // VOTE SUBMIT
   if (phase === "voting" && alive) {
     btn.innerText = "Submit Vote";
-
     btn.onclick = () => {
-      if (!selectedVote) {
-        alert("Pick someone to vote");
-        return;
-      }
-
-      socket.emit("vote", selectedVote);
-      selectedVote = null;
+      if (!votePick) return alert("Pick someone");
+      socket.emit("vote", votePick);
+      votePick = null;
     };
   }
 
-  // ONLY show if alive
   if (alive && (phase === "nominating" || phase === "voting")) {
     document.body.appendChild(btn);
   }
 }
-
-// ================= RESULTS =================
-socket.on("results", (data) => {
-  const results = document.getElementById("results");
-  results.innerHTML = "";
-
-  data.forEach(r => {
-    const div = document.createElement("div");
-    div.innerText = `${r.name}: ${r.votes}`;
-    results.appendChild(div);
-  });
-});

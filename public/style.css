@@ -1,70 +1,38 @@
 body {
-  background: #0b1f2a;
-  color: white;
-  text-align: center;
   font-family: Arial;
+  text-align: center;
+  background: #0f172a;
+  color: white;
 }
 
 #players {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  gap: 10px;
 }
 
-.player {
-  background: #1e2f44;
+.card {
+  background: #1e293b;
   padding: 15px;
-  margin: 10px;
   border-radius: 10px;
-  width: 150px;
-}
-
-.player.dead {
-  background: gray;
-  opacity: 0.5;
-}
-
-button {
-  background: #4a90e2;
-  border: none;
-  padding: 8px;
-  margin-top: 10px;
-  border-radius: 5px;
-  cursor: pointer;
-}
-.player-card {
-  background: #1e2a38;
-  padding: 15px;
-  border-radius: 12px;
-  text-align: center;
   width: 120px;
-  transition: 0.2s;
 }
 
-.player-card.dead {
-  background: #555;
-  opacity: 0.5;
+.card.dead {
+  opacity: 0.4;
 }
 
 button {
-  padding: 8px 12px;
+  margin-top: 5px;
+  padding: 6px;
   border: none;
-  border-radius: 8px;
-  background: #4da3ff;
+  border-radius: 6px;
+  background: #3b82f6;
   color: white;
-  cursor: pointer;
-  transition: 0.2s;
 }
 
-/* CLICKED BUTTON */
 button.selected {
-  background: #2ecc71;
+  background: #22c55e;
   transform: scale(0.95);
-}
-
-/* SUBMIT BUTTON */
-#actionBtn {
-  margin-top: 20px;
-  padding: 12px 20px;
-  font-size: 16px;
 }

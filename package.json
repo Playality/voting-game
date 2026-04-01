@@ -1,6 +1,7 @@
 {
   "name": "voting-game",
   "version": "1.0.0",
+  "description": "Multiplayer voting game",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
